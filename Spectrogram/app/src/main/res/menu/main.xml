@@ -1,0 +1,18 @@
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:context=".activity.MainActivity">
+    <!--1.alaways:这个值会使菜单项一直显示在ActionBar上。
+
+    2.ifRoom:如果有足够的空间,这个值会使菜单显示在ActionBar上。
+
+    3.never:这个值菜单永远不会出现在ActionBar是。
+
+    4.withText:这个值使菜单和它的图标，菜单文本一起显示。 -->
+    <item
+        android:id="@+id/action_edit"
+        android:icon="@mipmap/mybill_edit_normal"
+        android:orderInCategory="100"
+        android:title="切换"
+        app:showAsAction="always" />
+</menu>
