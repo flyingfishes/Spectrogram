@@ -34,6 +34,7 @@ public class MainActivity extends BaseActivity {
     private Spectrogram mSpectrogram;
     private Thread thread = null;
     private TextView mTitle;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -57,9 +58,9 @@ public class MainActivity extends BaseActivity {
         switch (item.getItemId()) {
             case R.id.action_edit:
                 mSpectrogram.changeShowType();
-                if (mTitle.getText().toString().equals("频谱图")){
+                if (mTitle.getText().toString().equals("频谱图")) {
                     mTitle.setText("波形图");
-                }else {
+                } else {
                     mTitle.setText("频谱图");
                 }
                 break;
@@ -87,30 +88,28 @@ public class MainActivity extends BaseActivity {
     @Override
     protected void onStart() {
         initWaveData();
-        if (!isOpenThisActivity && thread ==null) {
+        if (!isOpenThisActivity && thread == null) {
             thread = new Thread(specRun);
+            isOpenThisActivity = true;
+            thread.start();
         }
         super.onStart();
     }
 
     @Override
     protected void onResume() {
-        if (thread != null){
-            isOpenThisActivity = true;
-            thread.start();
-        }
         super.onResume();
     }
 
     @Override
     protected void onPause() {
-        isOpenThisActivity = false;
-        thread.interrupt();
         super.onPause();
     }
 
     @Override
     protected void onStop() {
+        isOpenThisActivity = false;
+        thread.interrupt();
         thread = null;
         super.onStop();
     }

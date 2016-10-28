@@ -51,14 +51,11 @@ public class Spectrogram extends View {
     private static final int XINTERVAL = 10;
     private static final int YINTERVAL = 8;
 
-    private int viewWidth = 0;// View的宽高
-    private int viewHeight = 0;
-
     private Canvas canvas = new Canvas();
     private Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    private int LineViewWidth = 0;
-    private int LineViewHeight = 0;
+    private float LineViewWidth = 0;
+    private float LineViewHeight = 0;
     //不分频的实部和虚部
     private double[] first_fft_real = new double[FFT_SIZE];
     private double[] first_fft_imag = new double[FFT_SIZE];
@@ -155,10 +152,8 @@ public class Spectrogram extends View {
         // TODO Auto-generated method stub
         super.onDraw(canvas);
         this.canvas = canvas;
-        viewWidth = this.getWidth();
-        viewHeight = this.getHeight();
-        LineViewWidth = viewWidth - 20;
-        LineViewHeight = viewHeight - 30;
+        LineViewWidth = this.getWidth() - XINTERVAL;
+        LineViewHeight = this.getHeight() - YINTERVAL;
         //频谱颜色
         sepColor = Color.rgb(63, 81, 181);
         //字体颜色
@@ -222,22 +217,94 @@ public class Spectrogram extends View {
         String[] X_axis = {"20Hz", "46Hz", "69Hz", "105Hz", "160Hz", "244Hz",
                 "371Hz", "565Hz", "859Hz", "1.30KHz", "1.98KHz", "3.02KHz",
                 "4.60KHz", "7.00KHz", "10.6KHz", "20KHz"};
-        int x_step = LineViewWidth / SPECTROGRAM_COUNT;
+        float x_step = LineViewWidth / SPECTROGRAM_COUNT;
         //这里计算的是格子的宽度
-        int width = x_step - XINTERVAL;
+        float width = x_step - XINTERVAL;
         // 横坐标(Hz)
         mPaint.setColor(textColor);
         mPaint.setAlpha(getTextAlpha());
         mPaint.setTextSize(15f);
         for (int i = 0; i < X_axis.length; i++) {
-            String hz = X_axis[i];
-            float textWidth = mPaint.measureText(hz);
+            float textWidth = mPaint.measureText(X_axis[i]);
             //这里是为了计算格子跟字的宽度差，用来确定字的位置,确保字跟方格中心在一条直线
-            float xBad = Math.abs(width - textWidth) / 2;
-            //20是横坐标的起始位置
-            int x = (int) (20 + 2 * i * x_step - xBad);
-            canvas.drawText(X_axis[i], x, viewHeight - 5, mPaint);
+            float xBad = (width - textWidth) / 2;
+            float x = XINTERVAL + 2 * i * x_step + xBad;
+            //获取文字上坡度(为负数)和下坡度的高度
+            Paint.FontMetrics font = mPaint.getFontMetrics();
+            float y = -(font.ascent + font.descent) / 2;
+            canvas.drawText(X_axis[i], x, LineViewHeight - YINTERVAL/2 + y, mPaint);
         }
+
+    }
+    /**
+     * 柱形频谱：方格方式显示
+     *
+     * @param real
+     * @param imag
+     */
+    private void drawGridTypeSpectrogram(double real[], double imag[]) {
+        double model;
+        int[] local = new int[ROW_LOCAL_COUNT];
+        //计算绘制频谱格子的宽度
+        float x_step = LineViewWidth / SPECTROGRAM_COUNT;
+        //格子的高度
+        float y_step = LineViewHeight / ROW_LOCAL_COUNT;
+        canvas.save();
+        canvas.translate(0, -10);
+        for (int i = 0; i < SPECTROGRAM_COUNT; i++) {
+            model = 2 * Math.hypot(real[i], imag[i]) / FFT_SIZE;// 计算电频最大值，Math.hypot(x,y)返回sqrt(x2+y2)，最高电频
+            for (int k = 1; k < ROW_LOCAL_COUNT; k++) {
+                if (model >= row_local_table[k - 1]
+                        && model < row_local_table[k]) {
+                    local[i] = k - 1;//这里取最高电频所对应的方格数
+                    break;
+                }
+            }
+            // 最上面的为0位置，最下面的为31位置,为了方便绘制top方格
+            local[i] = ROW_LOCAL_COUNT - local[i];
+            // 柱形
+            if (Signaled) {
+                mPaint.setColor(sepColor);
+                mPaint.setAlpha(getSepAlpha());
+            } else {
+                mPaint.setColor(sepColor);
+                mPaint.setAlpha(getSepAlpha());
+            }
+            float x = XINTERVAL + i * x_step;
+            for (int j = ROW_LOCAL_COUNT; j > local[i]; j--) {
+                float y = (j - 1) * y_step;
+                canvas.drawRect(x, y, x + x_step - XINTERVAL, y + y_step - YINTERVAL,
+                        mPaint);// 绘制矩形,左上右下
+            }
+            // 绿点
+            if (Signaled) {
+                mPaint.setColor(topColor);
+                mPaint.setAlpha(getSepAlpha());
+            } else {
+                mPaint.setColor(topColor);
+                mPaint.setAlpha(getSepAlpha());
+            }
+            //下面部分是用来显示落差效果的，没有强大的理解能力可能会绕晕，所以我也不做过多注释，看个人天赋吧
+            //local[i] < top_local[i]说明最高点改变（local[i]越小，点越高，这里需要注意）
+            if (local[i] < top_local[i]) {
+                //当进入到这里，说明达到最大电频，这个矩形会停留十次循环的时间才有改变
+                top_local[i] = local[i];
+                top_local_count[i] = 0;
+            } else {
+                top_local_count[i]++;
+                //这里top_local_count这个是用来记录达到top值的柱体，然后会循环10次开始
+                // top_local_count中小于DELAY的top_local都保持不变
+                if (top_local_count[i] >= DELAY) {
+                    top_local_count[i] = DELAY;
+                    //这里控制下降的速度
+                    top_local[i] = local[i] > (top_local[i] + 1) ? (top_local[i] + 1) : local[i];
+                }
+            }
+            //y增加则最高位方格下降
+            float y = top_local[i] * y_step;
+            canvas.drawRect(x, y, x + x_step - XINTERVAL, y + y_step - YINTERVAL, mPaint);// 最高位置的方格
+        }
+        canvas.restore();
     }
 
     /**
@@ -299,14 +366,14 @@ public class Spectrogram extends View {
      * 方格方式显示背景
      */
     private void drawGridTypeSpectrogrambg() {
-        int x_step = LineViewWidth / SPECTROGRAM_COUNT;
-        int y_step = viewHeight / ROW_LOCAL_COUNT;
+        float x_step = LineViewWidth / SPECTROGRAM_COUNT;
+        float y_step = LineViewHeight / ROW_LOCAL_COUNT;
 
         mPaint.setColor(Color.rgb(0x1f, 0x1f, 0x1f));
         for (int i = 0; i < SPECTROGRAM_COUNT; i++) {
-            int x = 25 + i * x_step;
+            float x = 25 + i * x_step;
             for (int j = 0; j < ROW_LOCAL_COUNT; j++) {
-                int y = j * y_step;
+                float y = j * y_step;
                 canvas.drawRect(x, y, x + x_step - XINTERVAL, y + y_step - YINTERVAL,
                         mPaint);
             }
@@ -314,86 +381,15 @@ public class Spectrogram extends View {
     }
 
     /**
-     * 柱形频谱：方格方式显示
-     *
-     * @param real
-     * @param imag
-     */
-    private void drawGridTypeSpectrogram(double real[], double imag[]) {
-        double model;
-        int[] local = new int[ROW_LOCAL_COUNT];
-        //计算绘制频谱格子的宽度
-        int x_step = LineViewWidth / SPECTROGRAM_COUNT;
-        //格子的高度
-        int y_step = (viewHeight) / ROW_LOCAL_COUNT;
-        canvas.save();
-        canvas.translate(0, -10);
-        for (int i = 0; i < SPECTROGRAM_COUNT; i++) {
-            model = 2 * Math.hypot(real[i], imag[i]) / FFT_SIZE;// 计算电频最大值，Math.hypot(x,y)返回sqrt(x2+y2)，最高电频
-            for (int k = 1; k < ROW_LOCAL_COUNT; k++) {
-                if (model >= row_local_table[k - 1]
-                        && model < row_local_table[k]) {
-                    local[i] = k - 1;//这里取最高电频所对应的方格数
-                    break;
-                }
-            }
-            // 最上面的为0位置，最下面的为31位置,为了方便绘制top方格
-            local[i] = ROW_LOCAL_COUNT - 1 - local[i];
-            // 柱形
-            if (Signaled) {
-                mPaint.setColor(sepColor);
-                mPaint.setAlpha(getSepAlpha());
-            } else {
-                mPaint.setColor(sepColor);
-                mPaint.setAlpha(getSepAlpha());
-            }
-            int x = 20 + i * x_step;
-            for (int j = ROW_LOCAL_COUNT - 1; j > local[i]; j--) {
-                int y = j * y_step;
-                canvas.drawRect(x, y, x + x_step - XINTERVAL, y + y_step - YINTERVAL,
-                        mPaint);// 绘制矩形,左上右下
-            }
-            // 绿点
-            if (Signaled) {
-                mPaint.setColor(topColor);
-                mPaint.setAlpha(getSepAlpha());
-            } else {
-                mPaint.setColor(topColor);
-                mPaint.setAlpha(getSepAlpha());
-            }
-            //下面部分是用来显示落差效果的，没有强大的理解能力可能会绕晕，所以我也不做过多注释，看个人天赋吧
-            //local[i] < top_local[i]说明最高点改变（local[i]越小，点越高，这里需要注意）
-            if (local[i] < top_local[i]) {
-                //当进入到这里，说明达到最大电频，这个矩形会停留十次循环的时间才有改变
-                top_local[i] = local[i];
-                top_local_count[i] = 0;
-            } else {
-                top_local_count[i]++;
-                //这里top_local_count这个是用来记录达到top值的柱体，然后会循环10次开始
-                // top_local_count中小于DELAY的top_local都保持不变
-                if (top_local_count[i] >= DELAY) {
-                    top_local_count[i] = DELAY;
-                    //这里控制下降的速度
-                    top_local[i] = local[i] > (top_local[i] + 1) ? (top_local[i] + 1) : local[i];
-                }
-            }
-            //y增加则最高位方格下降
-            int y = top_local[i] * y_step;
-            canvas.drawRect(x, y, x + x_step - XINTERVAL, y + y_step - YINTERVAL, mPaint);// 最高位置的方格
-        }
-        canvas.restore();
-    }
-
-    /**
      * 绘制波形
      */
     private void drawWave() {
         int len = data.length;
-        int step = len / LineViewWidth;
+        float step = len / LineViewWidth;
         if (step == 0)
             step = 1;
-        int prex = 0, prey = 0; // 上一个坐标
-        int x, y;
+        float prex = 0, prey = 0; // 上一个坐标
+        float x, y;
 
         if (Signaled) {
             mPaint.setColor(sepColor);
@@ -407,7 +403,7 @@ public class Spectrogram extends View {
             if (i * 3 < data.length) {
                 y = LineViewHeight / 2
                         - (int) (data[i * 3] * k);
-                if (i != 0){
+                if (i != 0) {
                     canvas.drawLine(x, y, prex, prey, mPaint);
                 }
                 prex = x;
@@ -422,12 +418,12 @@ public class Spectrogram extends View {
      */
     private void drawWave1() {
         int len = data.length;
-        int step = len / LineViewWidth;
+        float step = len / LineViewWidth;
         if (step == 0)
             step = 1;
 
-        int prex = 0, prey = 0; // 上一个坐标
-        int x = 0, y = 0;
+        float prex = 0, prey = 0; // 上一个坐标
+        float x = 0, y = 0;
 
         if (Signaled) {
             mPaint.setColor(Color.RED);
